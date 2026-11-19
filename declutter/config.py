@@ -39,7 +39,7 @@ SELECTION_FILE = OUTPUT_DIR / "selection.json"
 CLEANUP_LOG = OUTPUT_DIR / "cleanup_log.json"
 
 OLLAMA_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.1"   # override with --model
+OLLAMA_MODEL = "llama3.2"   # override with --model
 
 
 def _norm(p: Path | str) -> str:
