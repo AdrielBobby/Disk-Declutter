@@ -8,9 +8,17 @@ Scans your Windows machine and tells you which apps, files and caches are unused
 
 ## Quick start
 
+Easiest: double-click `declutter.bat` (or run `python -m declutter go`). It scans, opens the report in your browser, waits while you tick items and click **Export selection.json**, then lists exactly what will move and asks `y/N` before sending anything to the Recycle Bin. Extra options pass through, e.g. `declutter.bat --ai --stale-days 60`.
+
 ```powershell
 pip install -r requirements.txt
-python -m declutter scan            # ~seconds; add --ai for Ollama opinions
+python -m declutter go
+```
+
+Or run the steps yourself:
+
+```powershell
+python -m declutter scan            # add --ai for Ollama opinions
 python -m declutter report --open   # review, tick items, export selection.json
 python -m declutter clean           # dry run, shows exactly what would move
 python -m declutter clean --apply   # move to Recycle Bin, then empty it yourself
