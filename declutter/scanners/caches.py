@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from .. import config
-from ..fsutil import is_link, dir_size, newest_mtime
+from ..fsutil import dir_size, is_link, newest_mtime, real_path
 from ..models import CACHE, LOW, Item
 
 MIN_BYTES = 20 * 1024 * 1024   # ignore locations smaller than this
@@ -69,6 +69,7 @@ def scan(errors: list[str], stale_days: int = 90) -> list[Item]:
     items: list[Item] = []
 
     for label, path, why in _known_locations():
+        path = Path(real_path(path))   # Store-Python virtualization: point at the real folder
         if not path.is_dir():
             continue
         size = dir_size(str(path), errors)

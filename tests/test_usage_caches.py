@@ -44,3 +44,14 @@ def test_stale_node_modules_found_and_recent_ignored(tmp_path, monkeypatch):
 
     items = caches.scan([], stale_days=90)
     assert [i.name for i in items] == ["node_modules (oldproj)"]
+
+
+def test_real_path_resolves_store_python_virtualization(tmp_path, monkeypatch):
+    from declutter.fsutil import real_path
+    local = tmp_path / "Local"
+    virtual = local / "Packages" / "PythonSoftwareFoundation.Python.3.12_x" / "LocalCache" / "Local" / "pip" / "Cache"
+    virtual.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    assert real_path(local / "pip" / "Cache") == str(virtual)         # redirected -> real location
+    assert real_path(local / "Other") == str(local / "Other")         # untouched paths unchanged

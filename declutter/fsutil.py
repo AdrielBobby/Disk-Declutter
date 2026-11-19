@@ -42,3 +42,34 @@ def newest_mtime(path: str) -> float:
         return os.stat(path).st_mtime
     except OSError:
         return 0.0
+
+
+def real_path(path: str | os.PathLike) -> str:
+    r"""Resolve Microsoft Store Python's AppData virtualization.
+
+    Store-installed Python redirects writes under %LOCALAPPDATA%/%APPDATA% into
+    %LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.*\LocalCache\{Local,Roaming}. Python sees
+    the redirected files at the normal path, but File Explorer and every other program do not. If a
+    virtualized copy exists, return where it really lives so reports and cleanup point at real files.
+    """
+    p = os.path.abspath(str(path))
+    local = os.environ.get("LOCALAPPDATA")
+    roaming = os.environ.get("APPDATA")
+    if not local:
+        return p
+    packages = os.path.join(local, "Packages")
+    try:
+        pkgs = [d for d in os.listdir(packages) if d.startswith("PythonSoftwareFoundation.Python.")]
+    except OSError:
+        return p
+    for base, sub in ((local, "Local"), (roaming, "Roaming")):
+        if not base:
+            continue
+        rel = os.path.relpath(p, base) if os.path.normcase(p).startswith(os.path.normcase(base) + os.sep) else None
+        if rel is None:
+            continue
+        for pkg in pkgs:
+            candidate = os.path.join(packages, pkg, "LocalCache", sub, rel)
+            if os.path.exists(candidate):
+                return candidate
+    return p
