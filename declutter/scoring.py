@@ -61,11 +61,18 @@ def _score_app(item: Item, stale_days: int) -> None:
         item.confidence, item.risk = 0.2, MEDIUM
         item.reason = "Could not determine when this app was last used"
     elif age > stale_days:
-        item.confidence, item.risk = 0.6, MEDIUM
-        item.reason = f"App not used for about {age} days"
+        strong = item.last_used_source == "prefetch"
+        item.confidence, item.risk = (0.7 if strong else 0.35), MEDIUM
+        basis = "run history" if strong else f"{item.last_used_source.replace('_', ' ')}, weak evidence"
+        item.reason = f"App not used for about {age} days ({basis})"
     else:
         item.confidence, item.risk = 0.1, MEDIUM
-        item.reason = f"Used recently ({age} days ago)"
+        if item.last_used_source == "prefetch":
+            item.reason = f"Used recently ({age} days ago)"
+        else:
+            src = item.last_used_source.replace("_", " ")
+            item.reason = (f"Recent activity {age} days ago ({src}; weak evidence, "
+                           "may just be an update. Run as admin for run history)")
 
 
 def score_items(items: list[Item], stale_days: int) -> None:
