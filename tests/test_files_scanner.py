@@ -50,6 +50,46 @@ def test_scoring_marks_disposable_higher_than_personal(tmp_path):
     assert by_name["thesis.docx"].risk == "high"
 
 
+def test_hash_cache_skips_rehashing_unchanged_files(tmp_path, monkeypatch):
+    blob = os.urandom(2 * MB)
+    _make(tmp_path / "a.bin", 0, age_days=50, content=blob)
+    _make(tmp_path / "b.bin", 0, age_days=5, content=blob)
+    cache_file = tmp_path / "out" / "hash_cache.json"
+    monkeypatch.setattr(files.config, "HASH_CACHE", cache_file)
+
+    first = files.scan([str(tmp_path)], min_size_mb=500, stale_days=180, errors=[])
+    assert cache_file.exists()
+
+    calls = []
+    real = files._hash_file
+    monkeypatch.setattr(files, "_hash_file", lambda *a: calls.append(a) or real(*a))
+    second = files.scan([str(tmp_path)], min_size_mb=500, stale_days=180, errors=[])
+    assert calls == []                                   # everything came from the cache
+    assert [i.name for i in second] == [i.name for i in first] == ["b.bin"]
+
+    # touching a file invalidates only its entry
+    t = time.time() + 10
+    os.utime(tmp_path / "b.bin", (t, t))
+    files.scan([str(tmp_path)], min_size_mb=500, stale_days=180, errors=[])
+    assert len(calls) == 2                               # partial + full hash for b.bin only
+
+
+def test_junctions_are_skipped(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    _make(real / "big.iso", 2 * MB, age_days=400)
+    link = tmp_path / "link"
+    try:
+        os.symlink(real, link, target_is_directory=True)
+    except OSError:
+        import subprocess
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(real)], capture_output=True)
+        if r.returncode != 0:
+            return  # cannot create links here; nothing to verify
+    items = files.scan([str(tmp_path)], min_size_mb=1, stale_days=180, errors=[])
+    assert len(items) == 1
+
+
 def test_overlapping_roots_do_not_double_count(tmp_path):
     _make(tmp_path / "x.iso", 2 * MB, age_days=400)
     items = files.scan([str(tmp_path), str(tmp_path)], min_size_mb=1, stale_days=180, errors=[])

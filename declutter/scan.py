@@ -11,32 +11,44 @@ from .scanners import apps, caches, files, usage
 from .scoring import score_items
 
 
+def _stage(label: str, fn):
+    """Run one scanner, printing what it is doing and how long it took."""
+    print(f"{label}...", end=" ", flush=True)
+    start = time.time()
+    out = fn()
+    print(f"{time.time() - start:.1f}s")
+    return out
+
+
 def run_scan(args) -> int:
     result = ScanResult(scanned_at=time.time())
     skip = set(args.skip)
+    began = time.time()
 
     if "files" not in skip:
-        print("Scanning files...")
-        result.items += files.scan(args.dirs, args.min_size_mb, args.stale_days, result.errors)
+        result.items += _stage("Scanning files and looking for duplicates", lambda: files.scan(
+            args.dirs, args.min_size_mb, args.stale_days, result.errors))
     if "apps" not in skip:
-        print("Scanning installed apps...")
-        result.items += apps.scan(args.stale_days, result.errors)
+        result.items += _stage("Scanning installed apps", lambda: apps.scan(args.stale_days, result.errors))
     if "caches" not in skip:
-        print("Scanning caches and temp files...")
-        result.items += caches.scan(result.errors)
+        result.items += _stage("Scanning caches and temp files", lambda: caches.scan(result.errors))
     if "usage" not in skip:
-        print("Building disk usage breakdown...")
-        result.usage_tree = usage.scan(result.errors)
+        result.usage_tree = _stage("Building disk usage breakdown", lambda: usage.scan(result.errors))
 
     score_items(result.items, args.stale_days)
 
     if args.ai:
         from . import ai
-        print("Asking local model about borderline items...")
-        ai.review(result.items, model=args.model)
+        _stage(f"Asking {args.model} about borderline items", lambda: ai.review(result.items, model=args.model))
 
     config.OUTPUT_DIR.mkdir(exist_ok=True)
     config.SCAN_FILE.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
-    total = sum(i.size_bytes for i in result.items if i.deletable)
-    print(f"Done: {len(result.items)} candidates, ~{total / 1e9:.2f} GB reclaimable -> {config.SCAN_FILE}")
+
+    reclaimable = sum(i.size_bytes for i in result.items if i.deletable)
+    apps_size = sum(i.size_bytes for i in result.items if not i.deletable and i.kind == "app")
+    print(f"\nDone in {time.time() - began:.0f}s: {len(result.items)} candidates, "
+          f"{reclaimable / 1e9:.2f} GB clearable, {apps_size / 1e9:.1f} GB in installed apps (uninstall manually).")
+    if result.errors:
+        print(f"{len(result.errors)} location(s) could not be read (permissions); see 'errors' in {config.SCAN_FILE}.")
+    print("Next: python -m declutter report --open")
     return 0

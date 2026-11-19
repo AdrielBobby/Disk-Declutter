@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 
-def _is_link(entry: os.DirEntry) -> bool:
+def is_link(entry: os.DirEntry) -> bool:
     try:
         return entry.is_symlink() or entry.is_junction()
     except OSError:
@@ -22,7 +22,7 @@ def dir_size(path: str, errors: list[str] | None = None) -> int:
             with os.scandir(current) as it:
                 for entry in it:
                     try:
-                        if _is_link(entry):
+                        if is_link(entry):
                             continue
                         if entry.is_dir(follow_symlinks=False):
                             stack.append(entry.path)

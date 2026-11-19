@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from .. import config
-from ..fsutil import _is_link, dir_size, newest_mtime
+from ..fsutil import is_link, dir_size, newest_mtime
 from ..models import CACHE, LOW, Item
 
 MIN_BYTES = 20 * 1024 * 1024   # ignore locations smaller than this
@@ -53,7 +53,7 @@ def _find_node_modules(roots: list[Path], max_depth: int = 5):
             with os.scandir(current) as it:
                 for entry in it:
                     try:
-                        if _is_link(entry) or not entry.is_dir(follow_symlinks=False):
+                        if is_link(entry) or not entry.is_dir(follow_symlinks=False):
                             continue
                     except OSError:
                         continue

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import time
 from collections import defaultdict
 from pathlib import Path
 
 from .. import config
+from ..fsutil import is_link
 from ..models import DUPLICATE, FILE, Item
 
 MIN_DUP_BYTES = 1 * 1024 * 1024   # ignore tiny files when looking for duplicates
@@ -24,7 +26,7 @@ def _walk(root: Path, errors: list[str]):
             with os.scandir(current) as it:
                 for entry in it:
                     try:
-                        if entry.is_symlink():
+                        if is_link(entry):   # symlinks and junctions (e.g. legacy "My Videos")
                             continue
                         if entry.is_dir(follow_symlinks=False):
                             stack.append(entry.path)
@@ -69,14 +71,51 @@ def _group(paths: list[str], key) -> dict[str, list[str]]:
     return {k: v for k, v in groups.items() if len(v) > 1}
 
 
-def find_duplicates(by_size: dict[int, list[str]]) -> list[list[str]]:
+class HashCache:
+    """Remembers hashes between runs, keyed by path + size + mtime, so unchanged files are not re-read."""
+
+    def __init__(self, path: Path | None = None):
+        self.path = path
+        self.data: dict[str, str] = {}
+        if path and path.exists():
+            try:
+                self.data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                self.data = {}
+
+    def hash(self, p: str, partial: bool, size: int) -> str | None:
+        try:
+            key = f"{os.path.normcase(p)}|{size}|{os.stat(p).st_mtime_ns}|{int(partial)}"
+        except OSError:
+            return None
+        if key not in self.data:
+            digest = _hash_file(p, partial, size)
+            if digest is None:
+                return None
+            self.data[key] = digest
+        return self.data[key]
+
+    def save(self, live_paths: set[str]) -> None:
+        """Persist, dropping entries for files that no longer exist in the scan."""
+        if not self.path:
+            return
+        keep = {k: v for k, v in self.data.items() if k.split("|", 1)[0] in live_paths}
+        try:
+            self.path.parent.mkdir(exist_ok=True)
+            self.path.write_text(json.dumps(keep), encoding="utf-8")
+        except OSError:
+            pass
+
+
+def find_duplicates(by_size: dict[int, list[str]], cache: HashCache | None = None) -> list[list[str]]:
     """Group identical files: size -> partial hash -> full hash. Returns groups of 2+ paths."""
+    cache = cache or HashCache()
     result: list[list[str]] = []
     for size, paths in by_size.items():
         if len(paths) < 2:
             continue
-        for part_group in _group(paths, lambda p: _hash_file(p, True, size)).values():
-            for full_group in _group(part_group, lambda p: _hash_file(p, False, size)).values():
+        for part_group in _group(paths, lambda p: cache.hash(p, True, size)).values():
+            for full_group in _group(part_group, lambda p: cache.hash(p, False, size)).values():
                 result.append(full_group)
     return result
 
@@ -115,7 +154,8 @@ def scan(dirs, min_size_mb: int, stale_days: int, errors: list[str]) -> list[Ite
                         deletable=not config.is_protected(path),
                     )
 
-    for group in find_duplicates(by_size):
+    cache = HashCache(config.HASH_CACHE)
+    for group in find_duplicates(by_size, cache):
         # Keep the oldest copy as the "original"; flag the rest.
         group.sort(key=lambda p: (meta[p].st_mtime, len(p)))
         original = group[0]
@@ -133,4 +173,5 @@ def scan(dirs, min_size_mb: int, stale_days: int, errors: list[str]) -> list[Ite
                 extra={"original": original, "copies": len(group)},
             )
 
+    cache.save({os.path.normcase(p) for p in meta})
     return sorted(items.values(), key=lambda i: i.size_bytes, reverse=True)

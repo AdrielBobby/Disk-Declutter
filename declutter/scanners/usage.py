@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from .. import config
-from ..fsutil import _is_link
+from ..fsutil import is_link
 
 MAX_DEPTH = 3     # levels kept in the output tree (deeper sizes still roll up)
 TOP_N = 15        # biggest children kept per folder; the rest are merged into "other"
@@ -18,7 +18,7 @@ def _build(path: str, name: str, depth: int, errors: list[str]) -> dict:
         with os.scandir(path) as it:
             for entry in it:
                 try:
-                    if _is_link(entry):
+                    if is_link(entry):
                         continue
                     if entry.is_dir(follow_symlinks=False):
                         children.append(_build(entry.path, entry.name, depth + 1, errors))

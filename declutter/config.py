@@ -37,6 +37,7 @@ REPORT_FILE = OUTPUT_DIR / "report.html"
 SCAN_FILE = OUTPUT_DIR / "scan.json"
 SELECTION_FILE = OUTPUT_DIR / "selection.json"
 CLEANUP_LOG = OUTPUT_DIR / "cleanup_log.json"
+HASH_CACHE = OUTPUT_DIR / "hash_cache.json"   # set to None to disable (tests do)
 
 OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "llama3.2"   # override with --model
