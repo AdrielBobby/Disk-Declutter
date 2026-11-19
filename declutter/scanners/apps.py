@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -113,6 +114,21 @@ def last_used(location: str | None, install_date: str | None, prefetch: dict[str
     return None, "unknown"
 
 
+EXE_PATH = re.compile(r'([A-Za-z]:\\[^"]*?\.exe)', re.I)
+
+
+def guess_folder(v: dict) -> str | None:
+    """Install folder from InstallLocation, else from the folder of the uninstaller/icon exe."""
+    loc = (v.get("InstallLocation") or "").strip().strip('"')
+    if loc:
+        return loc
+    for key in ("QuietUninstallString", "UninstallString", "DisplayIcon"):
+        m = EXE_PATH.search(v.get(key) or "")
+        if m:
+            return os.path.dirname(m.group(1))
+    return None
+
+
 def entry_to_item(v: dict, prefetch: dict[str, float], errors: list[str]) -> Item | None:
     name = (v.get("DisplayName") or "").strip()
     if not name or v.get("SystemComponent") == 1 or v.get("ParentKeyName") or name.startswith("KS") and name[2:3].isdigit():
@@ -120,9 +136,9 @@ def entry_to_item(v: dict, prefetch: dict[str, float], errors: list[str]) -> Ite
     if "update for" in name.lower() or "security update" in name.lower():
         return None
 
-    location = (v.get("InstallLocation") or "").strip().strip('"') or None
+    location = guess_folder(v)
     if location and not os.path.isdir(location):
-        location = None
+        return None   # ghost entry: the app's folder is gone but Windows still lists it
 
     size = int(v.get("EstimatedSize") or 0) * 1024
     if not size and location:
@@ -135,7 +151,7 @@ def entry_to_item(v: dict, prefetch: dict[str, float], errors: list[str]) -> Ite
         kind=APP, name=name, path=location or "", size_bytes=size,
         last_used=ts, last_used_source=src, risk=MEDIUM, deletable=False,
         uninstall_cmd=v.get("QuietUninstallString") or v.get("UninstallString"),
-        extra={"publisher": v.get("Publisher"), "version": v.get("DisplayVersion")},
+        extra={"publisher": v.get("Publisher"), "version": v.get("DisplayVersion"), "probe": location},
     )
 
 

@@ -53,3 +53,13 @@ def test_scoring_weak_evidence_is_less_confident_than_prefetch():
     score_items([strong, weak], 180)
     assert strong.confidence > weak.confidence
     assert not strong.deletable
+
+
+def test_guess_folder_from_uninstaller_and_ghost_entries_skipped(tmp_path):
+    exe = tmp_path / "Game" / "unins000.exe"
+    entry = {"DisplayName": "Gone Game", "EstimatedSize": 10**6, "UninstallString": f'"{exe}" /SILENT'}
+    assert apps.guess_folder(entry) == str(exe.parent)
+    assert apps.entry_to_item(entry, {}, []) is None          # folder missing -> ghost entry
+    exe.parent.mkdir()
+    assert apps.entry_to_item(entry, {}, []).extra["probe"] == str(exe.parent)
+    assert apps.guess_folder({"UninstallString": "MsiExec.exe /X{ABC}"}) is None

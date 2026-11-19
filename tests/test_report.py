@@ -20,3 +20,17 @@ def test_hostile_path_cannot_break_out_of_script_tag():
     html = render_html(scan)
     assert html.count("</script>") == 2   # only the template's own closing tags
     assert _extract(html)["items"][0]["name"] == evil
+
+
+def test_prune_missing_drops_deleted_items_but_keeps_pathless(tmp_path):
+    from declutter.report import prune_missing
+    alive = tmp_path / "alive.bin"
+    alive.write_bytes(b"1")
+    scan = {"items": [
+        {"name": "alive", "path": str(alive)},
+        {"name": "deleted", "path": str(tmp_path / "gone.bin")},
+        {"name": "ghost app", "path": "", "extra": {"probe": str(tmp_path / "gone-dir")}},
+        {"name": "msi app", "path": "", "extra": {}},
+    ]}
+    assert prune_missing(scan) == 2
+    assert [i["name"] for i in scan["items"]] == ["alive", "msi app"]
